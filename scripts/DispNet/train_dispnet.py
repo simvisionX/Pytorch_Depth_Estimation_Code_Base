@@ -4,6 +4,7 @@ import logging
 import time
 import cv2 as cv
 import numpy as np
+from tqdm import tqdm
 
 import torch
 import torchvision
@@ -17,6 +18,8 @@ from torch.utils.data import DataLoader
 import dataloader
 from dataloader import transforms
 from utils import utils
+from model_zoo import DispNet
+from loss import SupervisedLoss
 
 
 try:
@@ -55,6 +58,8 @@ def parse_args():
     args = parser.parse_args()
     return args
 
+
+
 def validate():
     pass
 
@@ -62,6 +67,8 @@ def validate():
 
 def train():
     pass
+
+
 
 if __name__ == '__main__':
     args = parse_args()
@@ -77,6 +84,8 @@ if __name__ == '__main__':
     IMAGENET_MEAN = [0.485, 0.456, 0.406]
     IMAGENET_STD = [0.229, 0.224, 0.225]
 
+    learning_rate = 0.001
+
     torch.manual_seed(233)
     torch.cuda.manual_seed(233)
     np.random.seed(233)
@@ -87,7 +96,7 @@ if __name__ == '__main__':
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    # Train Loader
+    # Train Dataloader
     train_transform_list = [transforms.RandomCrop(args.img_height, args.img_width),
                             transforms.RandomColor(),
                             transforms.RandomVerticalFlip(),
@@ -106,6 +115,88 @@ if __name__ == '__main__':
 
     train_loader = DataLoader(dataset=train_data, batch_size=args.batch_size, shuffle=True,
                               num_workers=args.num_workers, pin_memory=True, drop_last=True)
+
+    # Validation Dataloader
+    val_transform_list = [transforms.RandomCrop(args.val_img_height, args.val_img_width, validate=True),
+                          transforms.ToTensor(),
+                          transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD)
+                          ]
+    val_transform = transforms.Compose(val_transform_list)
+    val_data = dataloader.StereoDataset(data_dir=args.data_dir,
+                                        dataset_name=args.dataset_name,
+                                        mode=args.mode,
+                                        transform=val_transform)
+    val_loader = DataLoader(dataset=val_data, batch_size=args.val_batch_size, shuffle=False,
+                            num_workers=args.num_workers, pin_memory=True, drop_last=False)
+
+
+    # Model
+    model = DispNet()
+
+    optimizer = optim.Adam(model.parameters(), learning_rate, betas=(0.9, 0.999))
+
+    Supervised_loss = SupervisedLoss([0.1, 0.2, 0.3, 0.4, 0.5, 0.6], device)
+
+
+    if args.pretrained_model is not None:
+        model_dict = model.state_dict()
+        pretrain_dict = torch.load(args.pretrained_model + ".pth")
+        pretrain_dict = {k:v for k, v in pretrain_dict.items() if k in model_dict}
+
+        model_dict.update(pretrain_dict)
+        model.load_state_dict(model_dict)
+
+        try:
+            # loading adam state
+            optimizer_dict = torch.load(args.pretrained_model + "_adam.pth")
+            optimizer.load_state_dict(optimizer_dict)
+        except:
+            print("Cannot find Adam weights '{}', so Adam is randomly initialized").format(args.pretrain_model + "_adam.pth")
+
+
+    for epoch in range(args.epoch):
+        loss_value = 0.
+        num_batch = 0
+        with tqdm(total=len(train_loader), desc="Epoch %2d/%d" % (epoch, args.epoch)) as pbar:
+            for i, sample in enumerate(train_loader):
+                left = sample['left'].to(device)
+                right = sample['right'].to(device)
+                gt_disp = sample['disp'].to(device)
+                mask = (gt_disp > 0) & (gt_disp < args.max_disp)
+
+                optimizer.zero_grad()
+
+                pred_disps = model(torch.cat([left, right], 1))
+                loss = Supervised_loss(pred_disps, gt_disp, mask)
+
+                loss.backward()
+                optimizer.step()
+
+                num_batch = num_batch + 1
+                loss_value = loss_value + loss.item()
+
+                pbar.set_postfix({'loss' : '%。6f' % (loss_value / num_batch)})
+                pbar.update(1)
+
+        model_path = os.path.join(args.save_path, "{:s}/weights_{:02d}".format(repr(model), epoch))
+        os.makedirs(model_path, exist_ok=True)
+        state_dict = model.state_dict()
+        torch.save(state_dict, os.path.join(model_path,"test1.pth"))
+        torch.save(optimizer.state_dict(), os.path.join(model_path, "test1_adam.pth"))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
