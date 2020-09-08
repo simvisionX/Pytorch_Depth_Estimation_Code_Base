@@ -4,6 +4,66 @@ import torch.nn as nn
 import torch.utils.data
 import torch.nn.functional as F
 
+
+def convbnrelu(in_channel, out_channel, kernel_size, stride, pad, dilation, BatchNorm=False):
+    if BatchNorm:
+        return nn.Sequential(
+            nn.Conv2d(
+                in_channel,
+                out_channel,
+                kernel_size=kernel_size,
+                stride=stride,
+                padding=dilation if dilation > 1 else pad,
+                dilation=dilation,
+                bias=False),
+            nn.BatchNorm2d(out_channel),
+            nn.LeakyReLU(0.1, inplace=True)
+        )
+    else:
+        return nn.Sequential(
+            nn.Conv2d(
+                in_channel,
+                out_channel,
+                kernel_size=kernel_size,
+                stride=stride,
+                padding=dilation if dilation > 1 else pad,
+                dilation=dilation,
+                bias=True),
+            nn.LeakyReLU(0.1, inplace=True)
+        )
+
+def upconvbnrelu(in_channel, out_channel, kernel_size, stride, pad, dilation, BatchNorm=False):
+    if BatchNorm:
+        return nn.Sequential(
+            nn.ConvTranspose2d(
+                in_channel,
+                out_channel,
+                kernel_size=kernel_size,
+                stride=stride,
+                padding=dilation if dilation > 1 else pad,
+                dilation=dilation,
+                bias=False),
+            nn.BatchNorm2d(out_channel),
+            nn.LeakyReLU(0.1, inplace=True)
+        )
+    else:
+        return nn.Sequential(
+            nn.ConvTranspose2d(
+                in_channel,
+                out_channel,
+                kernel_size=kernel_size,
+                stride=stride,
+                padding=dilation if dilation > 1 else pad,
+                dilation=dilation,
+                bias=False),
+            nn.LeakyReLU(0.1, inplace=True)
+        )
+
+
+def predict_flow(in_channel, out_channel=1):
+    return nn.Conv2d(in_channel, out_channel, kernel_size=3, stride=1, padding=1, bias=False)
+
+
 def preconv2d(in_planes, out_planes, kernel_size, stride, pad, dilation=1, bn=True):
     if bn:
         return nn.Sequential(

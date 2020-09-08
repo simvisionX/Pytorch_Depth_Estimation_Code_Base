@@ -58,15 +58,52 @@ def parse_args():
     args = parser.parse_args()
     return args
 
-
+def adjust_learning_rate(optimizer, epoch):
+    lr = 0.001
+    logger.info('learning rate is changed to %.2f' % lr)
+    for param_group in optimizer.param_groups:
+        param_group['lr'] = lr
 
 def validate():
     pass
 
 
 
-def train():
-    pass
+def train(model, train_loader, device, logger, args):
+    model.train()
+
+    Supervised_loss = SupervisedLoss(args.loss_weight, device)
+
+    for epoch in range(args.epoch):
+        adjust_learning_rate(optimizer, epoch)
+        loss_value = 0.
+        num_batch = 0
+        with tqdm(total=len(train_loader), desc="Epoch %2d/%d" % (epoch, args.epoch)) as pbar:
+            for i, sample in enumerate(train_loader):
+                left = sample['left'].to(device)
+                right = sample['right'].to(device)
+                gt_disp = sample['disp'].to(device)
+                mask = (gt_disp > 0) & (gt_disp < args.max_disp)
+
+                optimizer.zero_grad()
+
+                pred_disps = model(torch.cat([left, right], 1))
+                loss = Supervised_loss(pred_disps, gt_disp, mask)
+
+                loss.backward()
+                optimizer.step()
+
+                num_batch = num_batch + 1
+                loss_value = loss_value + loss.item()
+
+                pbar.set_postfix({'loss': '%。6f' % (loss_value / num_batch)})
+                pbar.update(1)
+
+        model_path = os.path.join(args.save_path, "{:s}/weights_{:02d}".format(repr(model), epoch))
+        os.makedirs(model_path, exist_ok=True)
+        state_dict = model.state_dict()
+        torch.save(state_dict, os.path.join(model_path, "test1.pth"))
+        torch.save(optimizer.state_dict(), os.path.join(model_path, "test1_adam.pth"))
 
 
 
@@ -81,10 +118,6 @@ if __name__ == '__main__':
     utils.save_command(args.checkpoint_dir, filename)
 
 
-    IMAGENET_MEAN = [0.485, 0.456, 0.406]
-    IMAGENET_STD = [0.229, 0.224, 0.225]
-
-    learning_rate = 0.001
 
     torch.manual_seed(233)
     torch.cuda.manual_seed(233)
@@ -92,10 +125,13 @@ if __name__ == '__main__':
 
     torch.backends.cudnn.benchmark = True
 
-
-
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+
+    IMAGENET_MEAN = [0.485, 0.456, 0.406]
+    IMAGENET_STD = [0.229, 0.224, 0.225]
+
+    # learning_rate = 0.001
     # Train Dataloader
     train_transform_list = [transforms.RandomCrop(args.img_height, args.img_width),
                             transforms.RandomColor(),
@@ -131,12 +167,8 @@ if __name__ == '__main__':
 
 
     # Model
-    model = DispNet()
-
-    optimizer = optim.Adam(model.parameters(), learning_rate, betas=(0.9, 0.999))
-
-    Supervised_loss = SupervisedLoss([0.1, 0.2, 0.3, 0.4, 0.5, 0.6], device)
-
+    model = DispNet().to(device)
+    optimizer = optim.Adam(model.parameters(), args.learning_rate, betas=(0.9, 0.999))
 
     if args.pretrained_model is not None:
         model_dict = model.state_dict()
@@ -151,38 +183,17 @@ if __name__ == '__main__':
             optimizer_dict = torch.load(args.pretrained_model + "_adam.pth")
             optimizer.load_state_dict(optimizer_dict)
         except:
-            print("Cannot find Adam weights '{}', so Adam is randomly initialized").format(args.pretrain_model + "_adam.pth")
+            logger.info("Cannot find Adam weights '{}', so Adam is randomly initialized").format(args.pretrain_model + "_adam.pth")
 
 
-    for epoch in range(args.epoch):
-        loss_value = 0.
-        num_batch = 0
-        with tqdm(total=len(train_loader), desc="Epoch %2d/%d" % (epoch, args.epoch)) as pbar:
-            for i, sample in enumerate(train_loader):
-                left = sample['left'].to(device)
-                right = sample['right'].to(device)
-                gt_disp = sample['disp'].to(device)
-                mask = (gt_disp > 0) & (gt_disp < args.max_disp)
+    if torch.cuda.device_count() > 1:
+        logger.info('=> %d GPUs' % torch.cuda.device_count())
+        model = torch.nn.DataParallel(model)
 
-                optimizer.zero_grad()
+    train(args)
 
-                pred_disps = model(torch.cat([left, right], 1))
-                loss = Supervised_loss(pred_disps, gt_disp, mask)
 
-                loss.backward()
-                optimizer.step()
 
-                num_batch = num_batch + 1
-                loss_value = loss_value + loss.item()
-
-                pbar.set_postfix({'loss' : '%。6f' % (loss_value / num_batch)})
-                pbar.update(1)
-
-        model_path = os.path.join(args.save_path, "{:s}/weights_{:02d}".format(repr(model), epoch))
-        os.makedirs(model_path, exist_ok=True)
-        state_dict = model.state_dict()
-        torch.save(state_dict, os.path.join(model_path,"test1.pth"))
-        torch.save(optimizer.state_dict(), os.path.join(model_path, "test1_adam.pth"))
 
 
 

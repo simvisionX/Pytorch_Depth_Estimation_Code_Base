@@ -187,7 +187,7 @@ class RandomHue(object):
         if np.random.random() < 0.5:
             hue = np.random.uniform(-0.1, 0.1)
             sample['left'] = F.adjust_hue(sample['left'], hue)
-            sample['right'] = F.adjust_hue(sample['right', hue])
+            sample['right'] = F.adjust_hue(sample['right'], hue)
 
         return sample
 
@@ -196,9 +196,9 @@ class RandomSaturation(object):
 
     def __call__(self, sample):
         if np.random.random() < 0.5:
-            saturation = np.random.random(0.8, 1.2)
+            saturation = np.random.uniform(0.8, 1.2)
             sample['left'] = F.adjust_saturation(sample['left'], saturation)
-            sample['right'] = F.adjust_saturation(sample['right', saturation])
+            sample['right'] = F.adjust_saturation(sample['right'], saturation)
         return sample
 
 class RandomColor(object):
