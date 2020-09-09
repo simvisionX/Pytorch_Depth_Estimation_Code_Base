@@ -1,10 +1,18 @@
 import os
 import sys
 import json
+import yaml
 import torch
 from glob import glob
 import logging
 
+
+def load_loss_scheme(loss_config):
+
+    with open(loss_config, 'r') as f:
+        loss_json = yaml.safe_load(f)
+
+    return loss_json
 
 
 def read_text_lines(filepath):
@@ -24,7 +32,6 @@ def get_logger():
     handler.setFormatter(logging.Formatter(fmt))
     logger.addHandler(handler)
     return logger
-
 
 
 def check_path(path):
